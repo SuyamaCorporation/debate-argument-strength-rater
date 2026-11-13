@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ディベート論拠強度評価ツール</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+<div class="max-w-3xl mx-auto">
+  <h1 class="text-2xl font-bold text-center text-indigo-700 mb-6">ディベート論拠強度評価ツール</h1>
+
+  <div class="bg-white rounded-xl shadow p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-700 mb-4">論拠を入力</h2>
+    <div class="mb-3">
+      <label for="claim" class="block text-sm font-medium text-gray-600 mb-1">主張（Claim）</label>
+      <input id="claim" type="text" class="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="例: 週4日労働制は生産性を向上させる">
+    </div>
+    <div class="mb-3">
+      <label for="ground" class="block text-sm font-medium text-gray-600 mb-1">根拠（Ground）</label>
+      <textarea id="ground" rows="3" class="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="例: Microsoft Japanの実験では生産性が40%向上した"></textarea>
+    </div>
+    <div class="mb-3">
+      <label for="warrant" class="block text-sm font-medium text-gray-600 mb-1">理由付け（Warrant）</label>
+      <textarea id="warrant" rows="2" class="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="例: 休息が増えると集中力が高まり、業務効率が上がる"></textarea>
+    </div>
+    <div class="mb-4">
+      <label for="rebuttal" class="block text-sm font-medium text-gray-600 mb-1">対立意見・反論（Rebuttal）</label>
+      <textarea id="rebuttal" rows="2" class="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="例: 一部の業種では業務量が変わらず負担が増す"></textarea>
+    </div>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div>
+        <label for="evidence-quality" class="block text-sm font-medium text-gray-600 mb-1">証拠の質 (1-5)</label>
+        <input id="evidence-quality" type="range" min="1" max="5" value="3" class="w-full accent-indigo-600">
+        <div class="text-xs text-center text-gray-500 mt-1" id="eq-label">3</div>
+      </div>
+      <div>
+        <label for="relevance" class="block text-sm font-medium text-gray-600 mb-1">関連性 (1-5)</label>
+        <input id="relevance" type="range" min="1" max="5" value="3" class="w-full accent-indigo-600">
+        <div class="text-xs text-center text-gray-500 mt-1" id="rel-label">3</div>
+      </div>
+      <div>
+        <label for="scope" class="block text-sm font-medium text-gray-600 mb-1">範囲の広さ (1-5)</label>
+        <input id="scope" type="range" min="1" max="5" value="3" class="w-full accent-indigo-600">
+        <div class="text-xs text-center text-gray-500 mt-1" id="scope-label">3</div>
+      </div>
+      <div>
+        <label for="rebuttability" class="block text-sm font-medium text-gray-600 mb-1">反論可能性 (低=強) (1-5)</label>
+        <input id="rebuttability" type="range" min="1" max="5" value="3" class="w-full accent-indigo-600">
+        <div class="text-xs text-center text-gray-500 mt-1" id="reb-label">3</div>
+      </div>
+    </div>
+    <button id="add-btn" aria-label="論拠を追加して評価" class="w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">論拠を追加・評価</button>
+  </div>
+
+  <div id="results" class="space-y-4"></div>
+</div>
+
+<script>
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+const STORAGE_KEY = 'app_debate-argument-strength-rater';
+
+function loadData() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
+}
+function saveData(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+
+function calcScore(eq, rel, sc, reb) {
+  return Math.round(((eq + rel + sc + (6 - reb)) / 16) * 100);
+}
+
+function getScoreColor(s) {
+  if (s >= 75) return 'text-green-600';
+  if (s >= 50) return 'text-yellow-600';
+  return 'text-red-600';
+}
+
+function getBarColor(s) {
+  if (s >= 75) return 'bg-green-500';
+  if (s >= 50) return 'bg-yellow-500';
+  return 'bg-red-500';
+}
+
+function renderBar(label, val, max) {
+  const pct = Math.round((val / max) * 100);
+  const div = document.createElement('div');
+  div.className = 'mb-1';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'flex justify-between text-xs text-gray-500 mb-0.5';
+  const lSpan = document.createElement('span');
+  lSpan.textContent = label;
+  const vSpan = document.createElement('span');
+  vSpan.textContent = val + '/' + max;
+  labelEl.appendChild(lSpan);
+  labelEl.appendChild(vSpan);
+  const track = document.createElement('div');
+  track.className = 'h-2 bg-gray-200 rounded';
+  const fill = document.createElement('div');
+  fill.className = 'h-2 rounded ' + (pct >= 75 ? 'bg-indigo-500' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400');
+  fill.style.width = pct + '%';
+  track.appendChild(fill);
+  div.appendChild(labelEl);
+  div.appendChild(track);
+  return div;
+}
+
+function render() {
+  const data = loadData();
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+  if (data.length === 0) return;
+
+  data.forEach((item, idx) => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl shadow p-5';
+
+    const header = document.createElement('div');
+    header.className = 'flex justify-between items-start mb-3';
+
+    const left = document.createElement('div');
+    const claimEl = document.createElement('div');
+    claimEl.className = 'font-bold text-gray-800 text-sm';
+    claimEl.textContent = item.claim;
+    left.appendChild(claimEl);
+
+    const scoreEl = document.createElement('div');
+    const pct = calcScore(item.eq, item.rel, item.sc, item.reb);
+    scoreEl.className = 'text-2xl font-bold ' + getScoreColor(pct);
+    scoreEl.textContent = pct + 'pt';
+
+    header.appendChild(left);
+    header.appendChild(scoreEl);
+    card.appendChild(header);
+
+    const scoreBar = document.createElement('div');
+    scoreBar.className = 'h-3 bg-gray-200 rounded mb-4';
+    const fill = document.createElement('div');
+    fill.className = 'h-3 rounded transition-all ' + getBarColor(pct);
+    fill.style.width = pct + '%';
+    scoreBar.appendChild(fill);
+    card.appendChild(scoreBar);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-2 gap-3 mb-3';
+
+    [
+      ['証拠の質', item.eq, 5],
+      ['関連性', item.rel, 5],
+      ['範囲の広さ', item.sc, 5],
+      ['反論可能性(低=良)', 6 - item.reb, 5]
+    ].forEach(([l, v, m]) => grid.appendChild(renderBar(l, v, m)));
+
+    card.appendChild(grid);
+
+    if (item.ground) {
+      const g = document.createElement('div');
+      g.className = 'text-xs text-gray-600 bg-gray-50 rounded p-2 mb-2';
+      const gt = document.createElement('span');
+      gt.className = 'font-semibold';
+      gt.textContent = '根拠: ';
+      g.appendChild(gt);
+      g.appendChild(document.createTextNode(item.ground));
+      card.appendChild(g);
+    }
+
+    if (item.rebuttal) {
+      const r = document.createElement('div');
+      r.className = 'text-xs text-orange-700 bg-orange-50 rounded p-2 mb-2';
+      const rt = document.createElement('span');
+      rt.className = 'font-semibold';
+      rt.textContent = '対立意見: ';
+      r.appendChild(rt);
+      r.appendChild(document.createTextNode(item.rebuttal));
+      card.appendChild(r);
+    }
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'text-xs text-red-400 hover:text-red-600 mt-1';
+    delBtn.setAttribute('aria-label', '論拠を削除');
+    delBtn.textContent = '削除';
+    delBtn.addEventListener('click', () => {
+      const d = loadData();
+      d.splice(idx, 1);
+      saveData(d);
+      render();
+    });
+    card.appendChild(delBtn);
+
+    container.appendChild(card);
+  });
+}
+
+document.getElementById('evidence-quality').addEventListener('input', function() {
+  document.getElementById('eq-label').textContent = this.value;
+});
+document.getElementById('relevance').addEventListener('input', function() {
+  document.getElementById('rel-label').textContent = this.value;
+});
+document.getElementById('scope').addEventListener('input', function() {
+  document.getElementById('scope-label').textContent = this.value;
+});
+document.getElementById('rebuttability').addEventListener('input', function() {
+  document.getElementById('reb-label').textContent = this.value;
+});
+
+document.getElementById('add-btn').addEventListener('click', () => {
+  const claim = document.getElementById('claim').value.trim();
+  if (!claim) { alert('主張を入力してください'); return; }
+  const data = loadData();
+  data.unshift({
+    claim,
+    ground: document.getElementById('ground').value.trim(),
+    warrant: document.getElementById('warrant').value.trim(),
+    rebuttal: document.getElementById('rebuttal').value.trim(),
+    eq: parseInt(document.getElementById('evidence-quality').value),
+    rel: parseInt(document.getElementById('relevance').value),
+    sc: parseInt(document.getElementById('scope').value),
+    reb: parseInt(document.getElementById('rebuttability').value),
+    ts: Date.now()
+  });
+  saveData(data);
+  document.getElementById('claim').value = '';
+  document.getElementById('ground').value = '';
+  document.getElementById('warrant').value = '';
+  document.getElementById('rebuttal').value = '';
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
